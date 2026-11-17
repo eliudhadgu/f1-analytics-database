@@ -14,7 +14,8 @@
 --    position, finish position, points, and status, with foreign keys to all
 --    three entities and checks for positive positions and nonnegative points.
 -- 2. Corrected Engine-Supplier to Engine_Supplier in that table's definition to make it valid SQLite SQL.
--- 3. Added CHECK (length_km > 0) to Circuit.
+-- 3. Added CHECK (length_km > 0) to Circuit and DEFAULT values to Result
+--    (points defaults to 0, status defaults to 'Finished').
 -- ============================================================================
 
 -- ============================================================================
@@ -56,7 +57,8 @@
 -- Statement 28: Nathan Delgado: 50%, Eliud Hadgu: 50%
 -- Statement 29: Nathan Delgado: 50%, Eliud Hadgu: 50%
 -- Statement 30: Nathan Delgado: 50%, Eliud Hadgu: 50%
---
+-- Statement 31: Nathan Delgado: 50%, Eliud Hadgu: 50%
+-- 
 -- ============================================================================
 PRAGMA foreign_keys = ON;
 .headers on
@@ -352,7 +354,7 @@ WHERE df1.start_date <= '2024-03-01'
 ORDER BY t.team_name, d1.driver_id, d2.driver_id;
 
 -- ============================================================================
--- SECTION 3: COMPLEX STATEMENTS (21-30)
+-- SECTION 3: COMPLEX STATEMENTS (21-31)
 -- Focus: Correlated subqueries, set operations, CTEs, window functions,
 --        view creation/querying, and conditional CASE expressions.
 -- ============================================================================
@@ -556,6 +558,37 @@ SELECT season_year, first_name, last_name, recorded_starts, total_points, wins,
        END AS sample_category
 FROM Checkpoint2_Driver_Season_Summary
 ORDER BY season_year, total_points DESC, driver_id;
+
+-- ----------------------------------------------------------------------------
+-- Statement 31: Teammate Head-to-Head by Season
+-- Explanation: Compare each pair of teammates by self-joining Result on race
+--              and team, using CASE to count how often each finished ahead.
+--              A non-finish counts as behind any classified finish.
+-- ----------------------------------------------------------------------------
+.print ''
+.print "Statement 31"
+SELECT s.season_year,
+       t.team_name,
+       d1.first_name || ' ' || d1.last_name AS first_driver,
+       d2.first_name || ' ' || d2.last_name AS second_driver,
+       SUM(CASE WHEN COALESCE(r1.finish_position, 99) < COALESCE(r2.finish_position, 99)
+                THEN 1 ELSE 0 END) AS first_driver_ahead,
+       SUM(CASE WHEN COALESCE(r1.finish_position, 99) > COALESCE(r2.finish_position, 99)
+                THEN 1 ELSE 0 END) AS second_driver_ahead,
+       SUM(CASE WHEN r1.finish_position IS NULL AND r2.finish_position IS NULL
+                THEN 1 ELSE 0 END) AS both_retired
+FROM Result AS r1
+JOIN Result AS r2 ON r2.race_id = r1.race_id
+                 AND r2.team_id = r1.team_id
+                 AND r2.driver_id > r1.driver_id
+JOIN Driver AS d1 ON d1.driver_id = r1.driver_id
+JOIN Driver AS d2 ON d2.driver_id = r2.driver_id
+JOIN Team AS t ON t.team_id = r1.team_id
+JOIN Race AS ra ON ra.race_id = r1.race_id
+JOIN Season AS s ON s.season_id = ra.season_id
+GROUP BY s.season_id, s.season_year, t.team_id, t.team_name,
+         d1.driver_id, d2.driver_id
+ORDER BY s.season_year, t.team_name, d1.driver_id, d2.driver_id;
 
 -- Restore the original sample rows and remove the demonstration view.
 ROLLBACK TO SAVEPOINT checkpoint2_examples;
